@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Registre Prises Médicaments</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: #f4f6f9;
+  padding: 20px;
+}
+
+.container {
+  max-width: 800px;
+  margin: auto;
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+h1 {
+  text-align: center;
+  margin-bottom: 15px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+input, select, textarea, button {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+}
+
+textarea {
+  resize: none;
+  height: 70px;
+}
+
+button {
+  background: #2563eb;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+button:hover {
+  background: #1e40af;
+}
+
+.record {
+  background: #f1f5f9;
+  padding: 12px;
+  border-radius: 8px;
+  margin-top: 10px;
+  border-left: 4px solid #2563eb;
+}
+
+.small {
+  font-size: 12px;
+  color: gray;
+}
+
+.action-btn {
+  background: #ef4444;
+  margin-top: 5px;
+}
+
+.action-btn:hover {
+  background: #b91c1c;
+}
+
+.modify-btn {
+  background: #facc15;
+  color: black;
+  margin-top: 5px;
+}
+
+.modify-btn:hover {
+  background: #ca8a04;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>💊 Registre de prises de médicaments</h1>
+
+<div class="grid">
+  <select id="medicament">
+    <option value="">Sélectionner un médicament</option>
+    <option>Paracétamol</option>
+    <option>Ibuprofène</option>
+    <option>Aspirine</option>
+    <option>Doliprane</option>
+    <option>Efferalgan</option>
+    <option>Amoxicilline</option>
+    <option>Vitamine C</option>
+    <option>Autre</option>
+  </select>
+
+  <input id="nouveauMed" placeholder="Nom si Autre" style="display:none">
+
+  <input id="dose" placeholder="Dose (ex: 500 mg)">
+  <input type="datetime-local" id="dateHeure">
+
+  <textarea id="note" class="full" placeholder="Remarque (facultatif)"></textarea>
+
+  <button onclick="ajouterPrise()" class="full">➕ Enregistrer la prise</button>
+</div>
+
+<h3 style="margin-top:20px">🕒 Historique</h3>
+<div id="liste"></div>
+
+</div>
+
+<!-- Firebase compat (fonctionne sur GitHub Pages) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<script>
+// Config Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyD7njwfHFdCzdnP4xfetF50jn_Glde3Gug",
+  authDomain: "registre-medicament-2.firebaseapp.com",
+  projectId: "registre-medicament-2",
+  storageBucket: "registre-medicament-2.firebasestorage.app",
+  messagingSenderId: "107773329662",
+  appId: "1:107773329662:web:ce53ec013d660b50eca5af"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// Gestion champ "Autre"
+const select = document.getElementById("medicament");
+const champNouveau = document.getElementById("nouveauMed");
+
+select.addEventListener("change", () => {
+  champNouveau.style.display = select.value === "Autre" ? "block" : "none";
+});
+
+// Mot de passe pour modifier/supprimer
+const PASSWORD = "250825";
+
+// Ajouter une prise
+window.ajouterPrise = async function() {
+  let medicament = select.value;
+  let nouveau = champNouveau.value.trim();
+  let dose = document.getElementById("dose").value.trim();
+  let dateHeure = document.getElementById("dateHeure").value;
+  let note = document.getElementById("note").value.trim();
+
+  if(medicament === "Autre") {
+    if(!nouveau) return alert("Entre le nom du médicament");
+    medicament = nouveau;
+  }
+
+  if(!medicament || !dose || !dateHeure) return alert("Remplis médicament, dose et date/heure");
+
+  try {
+    await db.collection("prises").add({
+      medicament,
+      dose,
+      dateheure: dateHeure,
+      note,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    alert("✅ Prise enregistrée !");
+    champNouveau.value = "";
+    document.getElementById("dose").value = "";
+    document.getElementById("note").value = "";
+    chargerPrises();
+  } catch(e) {
+    alert("❌ Erreur Firebase : " + e.message);
+  }
+};
+
+// Charger l’historique
+async function chargerPrises() {
+  let liste = document.getElementById("liste");
+  liste.innerHTML = "";
+
+  try {
+    const snap = await db.collection("prises").orderBy("createdAt","desc").get();
+    snap.forEach(docSnap => {
+      let p = docSnap.data();
+      let div = document.createElement("div");
+      div.className = "record";
+
+      div.innerHTML = `
+        <strong>${p.medicament}</strong><br>
+        Dose : ${p.dose}<br>
+        Date : ${new Date(p.dateheure).toLocaleString()}<br>
+        ${p.note ? "<span class='small'>Note : " + p.note + "</span>" : ""}
+        <button class="modify-btn" onclick="modifierPrise('${docSnap.id}')">✏️ Modifier</button>
+        <button class="action-btn" onclick="supprimerPrise('${docSnap.id}')">🗑 Supprimer</button>
+      `;
+      liste.appendChild(div);
+    });
+  } catch(e) {
+    alert("❌ Impossible de charger l'historique : " + e.message);
+  }
+}
+
+// Supprimer une prise
+window.supprimerPrise = async function(id) {
+  const mdp = prompt("Mot de passe pour supprimer :");
+  if(mdp !== PASSWORD) return alert("❌ Mot de passe incorrect");
+
+  try {
+    await db.collection("prises").doc(id).delete();
+    alert("✅ Prise supprimée !");
+    chargerPrises();
+  } catch(e) {
+    alert("❌ Impossible de supprimer : " + e.message);
+  }
+}
+
+// Modifier une prise
+window.modifierPrise = async function(id) {
+  const mdp = prompt("Mot de passe pour modifier :");
+  if(mdp !== PASSWORD) return alert("❌ Mot de passe incorrect");
+
+  const docSnap = await db.collection("prises").doc(id).get();
+  if(!docSnap.exists) return alert("❌ Prise introuvable");
+
+  const data = docSnap.data();
+
+  const newMed = prompt("Nom du médicament :", data.medicament);
+  const newDose = prompt("Dose :", data.dose);
+  const newDate = prompt("Date/heure (YYYY-MM-DDTHH:MM) :", data.dateheure);
+  const newNote = prompt("Note :", data.note);
+
+  if(!newMed || !newDose || !newDate) return alert("Remplis tous les champs obligatoires");
+
+  try {
+    await db.collection("prises").doc(id).update({
+      medicament: newMed,
+      dose: newDose,
+      dateheure: newDate,
+      note: newNote
+    });
+    alert("✅ Prise modifiée !");
+    chargerPrises();
+  } catch(e) {
+    alert("❌ Impossible de modifier : " + e.message);
+  }
+}
+
+// Charger automatiquement au démarrage
+chargerPrises();
+</script>
+
+</body>
+</html>
